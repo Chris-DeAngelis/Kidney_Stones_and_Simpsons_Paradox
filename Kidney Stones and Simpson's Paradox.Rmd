@@ -1,0 +1,101 @@
+---
+title: "Kidney Stones and Simpson's Paradox"
+author: "Chris DeAngelis, CFA"
+date: "8/29/2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 38px;
+  color: Black;
+  text-align: center;
+}
+h4.author { /* Header 4 - and the author and data headers use this too  */
+    font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: Black;
+  text-align: center;
+}
+h4.date { /* Header 4 - and the author and data headers use this too  */
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: Black;
+  text-align: center;
+}
+</style>
+
+In 1986, a group of urologists in London published a research paper in The British Medical Journal that compared the effectiveness of two different methods to remove kidney stones. Treatment A was open surgery (invasive), and treatment B was percutaneous nephrolithotomy (less invasive). When they looked at the results from 700 patients, treatment B had a higher success rate. However, when they only looked at the subgroup of patients different kidney stone sizes, treatment A had a better success rate. What is going on here? This known statistical phenomenon is called Simpon’s paradox. Simpon's paradox occurs when trends appear in subgroups but disappear or reverse when subgroups are combined.
+
+```{r setup, include=FALSE}
+# Load the readr and dplyr packages
+library(readr) # Reading in CSV data
+library(dplyr) # Manipulating data
+library(ggplot2) # Graphing data
+library(broom) # Summarizes statistical models and information
+
+# Read datasets kidney_stone_data.csv into data
+data <- read_csv("https://github.com/topherdea/Kidney_Stones_and_Simpsons_Paradox/blob/master/kidney_stone_data.csv")
+
+# Take a look at the first few rows of the dataset
+head(data, 6)
+```
+
+First, I familiarized myself with the dataset. I worked with 3 columns: treatment (A or B), stone_size (large or small), and success (0 = failure or 1 = success). I first looked at which treatments had higher success rates regardless of stone size. It appears treatment B performed better on average than treatment A (82% vs 78%). Then, I looked at the same results after considering stone size. 
+
+```{r exploratory}
+# Calculate the number and frequency of success and failure of each treatment 
+data %>% 
+  group_by(treatment, success) %>%
+  summarise(N = n()) %>% 
+  mutate(Freq = round(N/sum(N), digits = 3))
+
+# Calculate number and frequency of success and failure by stone size for each treatment
+sum_data <- 
+  data %>% 
+  group_by(treatment, stone_size, success) %>%
+  summarise(N = n()) %>%
+  mutate(Freq = round(N/sum(N),digits = 3))
+
+# Print out the data frame we just created
+print(sum_data)
+
+# Create a bar plot to show stone size count within each treatment
+sum_data %>%
+  ggplot(aes(x = treatment, y = N)) + 
+  geom_bar(aes(fill = stone_size), stat='identity') 
+```
+
+From the chart it appears large kidney stones appeared to be in test A whereas small kidney stones appeared in test B. To confirm that stone size is the confounding variable, I used a Chi-Square test. Then, I used multiple logistic regression to remove the unwanted effect of stone size.
+
+```{r modeling}
+# Run a Chi-squared test
+trt_ss <- chisq.test(data$treatment, data$stone_size)
+
+# Print out the result in tidy format 
+tidy(trt_ss)
+
+# Run a multiple logistic regression
+m <- glm(data = data, success ~ stone_size + treatment, family = "binomial")
+
+# Print out model coefficient table in tidy format
+tidy(m)
+
+# Save the tidy model output into an object
+tidy_m <- tidy(m)
+
+# Plot the coefficient estimates with 95% CI for each term in the model
+tidy_m %>%
+  ggplot(aes(x = term, y = estimate)) + 
+  geom_pointrange(aes(ymin = estimate - 1.96 * std.error, 
+                      ymax = estimate + 1.96 * std.error)) +
+ geom_hline(yintercept = 0)
+```
+
